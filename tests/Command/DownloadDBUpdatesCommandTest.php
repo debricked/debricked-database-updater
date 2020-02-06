@@ -39,12 +39,13 @@ class DownloadDBUpdatesCommandTest extends KernelTestCase
 
         $this::bootKernel();
 
-        // Delete timestamp.txt so we are "clean" between tests
-        \unlink(
-            $this::$container->getParameter(
+        $timestampPath = $this::$container->getParameter(
                 'kernel.project_dir'
-            ).DownloadDBUpdatesCommand::DB_UPDATES_SUB_DIRECTORY.'timestamp.txt'
-        );
+            ).DownloadDBUpdatesCommand::DB_UPDATES_SUB_DIRECTORY.'timestamp.txt';
+        if (\file_exists($timestampPath) === true) {
+            // Delete timestamp.txt so we are "clean" between tests
+            \unlink($timestampPath);
+        }
     }
 
     public function testExecute()
