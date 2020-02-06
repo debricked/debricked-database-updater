@@ -1,6 +1,6 @@
 <?php
 /**
- *     @license
+ * @license
  *
  *     Copyright (C) 2020 debricked AB
  *
@@ -20,17 +20,19 @@
 
 namespace App\Command;
 
+use Debricked\Shared\API\API;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Command\LockableTrait;
+use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\HttpClient\NativeHttpClient;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Command for downloading updates of the database.
@@ -44,18 +46,19 @@ class DownloadDBUpdatesCommand extends Command
 
     protected static $defaultName = 'debricked:db:download';
 
-    private const OPTION_API_URL = 'api_url';
+    public const ARGUMENT_USERNAME = 'username';
+    public const ARGUMENT_PASSWORD = 'password';
+    public const OPTION_API_URL = 'api_url';
+    public const DB_UPDATES_SUB_DIRECTORY = '/var/dbupdates/';
+    public const DEFAULT_START_DATE = '1970-01-01T00:00:00+00:00';
 
     private string $dbUpdatesDir;
 
-    private HttpClientInterface $httpClient;
-
-    public function __construct(string $projectDir, HttpClientInterface $httpClient, string $name = null)
+    public function __construct(string $projectDir, string $name = null)
     {
         parent::__construct($name);
 
-        $this->dbUpdatesDir = "$projectDir/dbupdates/";
-        $this->httpClient = $httpClient;
+        $this->dbUpdatesDir = $projectDir.self::DB_UPDATES_SUB_DIRECTORY;
     }
 
     /**
@@ -65,8 +68,28 @@ class DownloadDBUpdatesCommand extends Command
     {
         $this
             ->setName(static::$defaultName)
-            ->setDescription('This command fetches any available updates for the database from Debricked since last run.')
-            ->addOption(self::OPTION_API_URL, null, InputOption::VALUE_OPTIONAL, 'API URL to communicate with', 'https://app.debricked.com/api');
+            ->setDescription(
+                'This command fetches any available updates for the database from Debricked since last run.'
+            )
+            ->addArgument(
+                self::ARGUMENT_USERNAME,
+                InputArgument::REQUIRED,
+                'Your Debricked username',
+                null
+            )
+            ->addArgument(
+                self::ARGUMENT_PASSWORD,
+                InputArgument::REQUIRED,
+                'Your Debricked password',
+                null
+            )
+            ->addOption(
+                self::OPTION_API_URL,
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'API URL to communicate with',
+                'https://app.debricked.com/api'
+            );
     }
 
     /**
@@ -74,60 +97,60 @@ class DownloadDBUpdatesCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        if (!$this->lock())
-        {
-            $output->writeln('The command is already running in another process.');
-
-            return 0;
-        }
-
         $io = new SymfonyStyle($input, $output);
         $io->newLine(2);
 
-        $timestampPath = "{$this->dbUpdatesDir}/timestamp.txt";
+        $timestampPath = "{$this->dbUpdatesDir}timestamp.txt";
 
         $apiUrl = $input->getOption(self::OPTION_API_URL);
         $updatedAfter = null;
 
-        if (\file_exists($timestampPath) === true)
-        {
+        if (\file_exists($timestampPath) === true) {
             $updatedAfter = \file_get_contents($timestampPath);
         }
-        else
-        {
-            $updatedAfter = '1970-01-01T00:00:00+00:00';
+        else {
+            $updatedAfter = self::DEFAULT_START_DATE;
         }
 
         $io->section("Downloading updates from {$updatedAfter} and later, using '{$apiUrl}' as API URL");
 
-        try
-        {
-            $request = $this->httpClient->request
-            (
-                'GET',
-                "{$apiUrl}/1.0/cves/by/id",
+        $username = \strval($input->getArgument(self::ARGUMENT_USERNAME));
+        $password = \strval($input->getArgument(self::ARGUMENT_PASSWORD));
+        $api = new API(
+            new NativeHttpClient(
                 [
-                    'updatedAfter' => $updatedAfter,
+                    'base_uri' => "{$apiUrl}/",
+                ]
+            ),
+            $username,
+            $password,
+        );
+
+        try {
+            $response = $api->makeApiCall(
+                'GET',
+                '/api/1.0/cves/by/id',
+                [
+                    'query' =>
+                        [
+                            'updatedAfter' => $updatedAfter,
+                        ],
                 ]
             );
-            $response = $request->getContent(true);
-        }
-        catch (ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface|TransportExceptionInterface $e)
-        {
+            $responseContent = $response->getContent(true);
+        } catch (ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface|TransportExceptionInterface $e) {
             $io->error("An error occurred when downloading DB updates: {$e->getMessage()}");
 
             return 1;
         }
 
-        $decodedResponse = \json_decode($response, true);
-        if ($decodedResponse === null)
-        {
+        $decodedResponse = \json_decode($responseContent, true);
+        if ($decodedResponse === null) {
             $io->warning('Non-json response received from API. You might need to update this command.');
 
             return 0;
         }
-        if (\count($decodedResponse) === 0)
-        {
+        if (\count($decodedResponse) === 0) {
             $io->success('No further updates are available');
 
             return 0;
@@ -136,7 +159,10 @@ class DownloadDBUpdatesCommand extends Command
         $lastCve = \end($decodedResponse);
         $lastUpdatedAt = $lastCve['updated_at'];
         \file_put_contents($timestampPath, $lastUpdatedAt);
-        \file_put_contents("dbupdate-{$lastUpdatedAt}", $response);
+        $updateFilePath = "{$this->dbUpdatesDir}dbupdate-{$lastUpdatedAt}";
+        \file_put_contents($updateFilePath, $responseContent);
+
+        $io->success("Successfully downloaded updates. Update file is: {$updateFilePath}");
 
         return 0;
     }

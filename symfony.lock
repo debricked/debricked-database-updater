@@ -1,6 +1,9 @@
 {
+    "debricked/shared": {
+        "version": "dev-master"
+    },
     "php": {
-        "version": "7.3"
+        "version": "7.4.0"
     },
     "psr/cache": {
         "version": "1.0.1"
@@ -103,6 +106,22 @@
     },
     "symfony/mime": {
         "version": "v5.0.4"
+    },
+    "symfony/phpunit-bridge": {
+        "version": "4.3",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "master",
+            "version": "4.3",
+            "ref": "3f8a8c93cd47061999316f8d56edd6c2abca9308"
+        },
+        "files": [
+            ".env.test",
+            "bin/phpunit",
+            "config/services_test.yaml",
+            "phpunit.xml.dist",
+            "tests/bootstrap.php"
+        ]
     },
     "symfony/polyfill-intl-idn": {
         "version": "v1.13.1"
