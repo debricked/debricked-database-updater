@@ -41,7 +41,6 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  */
 class DownloadDBUpdatesCommand extends Command
 {
-
     use LockableTrait;
 
     protected static $defaultName = 'debricked:db:download';
@@ -64,7 +63,7 @@ class DownloadDBUpdatesCommand extends Command
     /**
      * {@inheritdoc}
      */
-    protected function configure()
+    protected function configure(): void
     {
         $this
             ->setName(static::$defaultName)
@@ -95,7 +94,7 @@ class DownloadDBUpdatesCommand extends Command
     /**
      * {@inheritdoc}
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $io->newLine(2);
@@ -103,12 +102,16 @@ class DownloadDBUpdatesCommand extends Command
         $timestampPath = "{$this->dbUpdatesDir}timestamp.txt";
 
         $apiUrl = $input->getOption(self::OPTION_API_URL);
+        if (\is_string($apiUrl) === false) {
+            $io->error(self::OPTION_API_URL.' option must be a string');
+
+            return 1;
+        }
         $updatedAfter = null;
 
         if (\file_exists($timestampPath) === true) {
             $updatedAfter = \file_get_contents($timestampPath);
-        }
-        else {
+        } else {
             $updatedAfter = self::DEFAULT_START_DATE;
         }
 
@@ -131,14 +134,13 @@ class DownloadDBUpdatesCommand extends Command
                 'GET',
                 '/api/1.0/cves/by/id',
                 [
-                    'query' =>
-                        [
-                            'updatedAfter' => $updatedAfter,
-                        ],
+                    'query' => [
+                        'updatedAfter' => $updatedAfter,
+                    ],
                 ]
             );
             $responseContent = $response->getContent(true);
-        } catch (ClientExceptionInterface|RedirectionExceptionInterface|ServerExceptionInterface|TransportExceptionInterface $e) {
+        } catch (ClientExceptionInterface | RedirectionExceptionInterface | ServerExceptionInterface | TransportExceptionInterface $e) {
             $io->error("An error occurred when downloading DB updates: {$e->getMessage()}");
 
             return 1;
@@ -159,12 +161,11 @@ class DownloadDBUpdatesCommand extends Command
         $lastCve = \end($decodedResponse);
         $lastUpdatedAt = $lastCve['updated_at'];
         \file_put_contents($timestampPath, $lastUpdatedAt);
-        $updateFilePath = "{$this->dbUpdatesDir}dbupdate-{$lastUpdatedAt}";
+        $updateFilePath = "{$this->dbUpdatesDir}dbupdate-{$lastUpdatedAt}.json";
         \file_put_contents($updateFilePath, $responseContent);
 
         $io->success("Successfully downloaded updates. Update file is: {$updateFilePath}");
 
         return 0;
     }
-
 }

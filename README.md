@@ -1,5 +1,5 @@
 # debricked-database-updater
-[![Build Status](https://travis-ci.org/debricked/debricked-database-updater.svg?branch=master)](https://travis-ci.org/debricked/debricked-database-updater)
+[![Build Status](https://travis-ci.com/debricked/debricked-database-updater.svg?branch=master)](https://travis-ci.com/debricked/debricked-database-updater)
 [![Latest Stable Version](https://poser.pugx.org/debricked/database-updater/v/stable)](https://packagist.org/packages/debricked/database-updater)
 
 Command Line Tool (CLI) for updating on site deployments of [Debricked](https://debricked.com).
